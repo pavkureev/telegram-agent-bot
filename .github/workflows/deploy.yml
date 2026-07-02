@@ -18,6 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate secrets
+        run: |
+          test -n "${{ secrets.DEPLOY_HOST }}" || (echo "DEPLOY_HOST secret is missing" && exit 1)
+          test -n "${{ secrets.DEPLOY_USER }}" || (echo "DEPLOY_USER secret is missing" && exit 1)
+          test -n "${{ secrets.DEPLOY_PATH }}" || (echo "DEPLOY_PATH secret is missing" && exit 1)
+          test -n "${{ secrets.DEPLOY_SSH_KEY }}" || (echo "DEPLOY_SSH_KEY secret is missing" && exit 1)
+
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
