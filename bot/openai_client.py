@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from openai import AsyncOpenAI
 
 from bot.agents import Agent
@@ -44,10 +46,35 @@ class AgentRunner:
             kwargs["tools"] = [{"type": "web_search_preview"}]
 
         response = await self.client.responses.create(**kwargs)
-        text = getattr(response, "output_text", None)
+        text = self._extract_response_text(response)
         if text:
-            return str(text).strip()
-        return str(response).strip()
+            return text
+
+        incomplete_reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
+        if incomplete_reason == "max_output_tokens":
+            return (
+                "Ответ не поместился в текущий лимит токенов и был обрезан до того, "
+                "как модель успела сформировать финальный текст.\n\n"
+                "Что можно сделать:\n"
+                "1. Увеличить `OPENAI_MAX_OUTPUT_TOKENS` в `.env`, например до `10000`.\n"
+                "2. Попросить более узкий ответ: только список цен, без анализа.\n"
+                "3. Разбить задачу на несколько продуктов или подписок."
+            )
+
+        return "Модель вернула ответ без текстового содержимого. Попробуй переформулировать запрос короче."
+
+    def _extract_response_text(self, response: Any) -> str:
+        output_text = getattr(response, "output_text", None)
+        if output_text:
+            return str(output_text).strip()
+
+        parts: list[str] = []
+        for item in getattr(response, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                text = getattr(content, "text", None)
+                if text:
+                    parts.append(str(text))
+        return "\n\n".join(part.strip() for part in parts if part.strip()).strip()
 
     def _build_user_prompt(
         self,
