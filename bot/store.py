@@ -11,6 +11,13 @@ class ContextItem:
     content: str
 
 
+@dataclass(frozen=True)
+class ConversationMessage:
+    role: str
+    agent: str
+    content: str
+
+
 class Store:
     def __init__(self, path: Path):
         self.path = path
@@ -38,6 +45,18 @@ class Store:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     chat_id INTEGER NOT NULL,
                     title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    agent TEXT NOT NULL,
                     content TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
@@ -93,5 +112,68 @@ class Store:
         with self._connect() as conn:
             conn.execute("DELETE FROM context_items WHERE chat_id = ?", (chat_id,))
 
+    def add_message(self, chat_id: int, role: str, agent: str, content: str) -> None:
+        content = content.strip()
+        if not content:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO conversation_messages(chat_id, role, agent, content)
+                VALUES(?, ?, ?, ?)
+                """,
+                (chat_id, role, agent, content[:20_000]),
+            )
+
+    def get_recent_messages(
+        self,
+        chat_id: int,
+        limit: int,
+        max_chars: int,
+    ) -> list[ConversationMessage]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT role, agent, content
+                FROM conversation_messages
+                WHERE chat_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (chat_id, limit),
+            ).fetchall()
+
+        messages: list[ConversationMessage] = []
+        total_chars = 0
+        for row in reversed(rows):
+            content = str(row["content"])
+            if total_chars + len(content) > max_chars:
+                remaining = max_chars - total_chars
+                if remaining <= 0:
+                    continue
+                content = content[-remaining:]
+            messages.append(
+                ConversationMessage(
+                    role=str(row["role"]),
+                    agent=str(row["agent"]),
+                    content=content,
+                )
+            )
+            total_chars += len(content)
+        return messages
+
+    def count_messages(self, chat_id: int) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM conversation_messages WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+        return int(row["count"])
+
+    def clear_messages(self, chat_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM conversation_messages WHERE chat_id = ?", (chat_id,))
+
     def reset_chat(self, chat_id: int) -> None:
         self.clear_context(chat_id)
+        self.clear_messages(chat_id)

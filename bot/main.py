@@ -55,7 +55,7 @@ class BotApp:
         await update.effective_message.reply_text(
             "Готов. Выбери агента командой /agent researcher, /agent product, /agent cpo или /agent editor.\n\n"
             "Можно отправлять документы .txt, .md, .pdf, .docx, .pptx. "
-            "Длинные ответы я пришлю Markdown-файлом."
+            "Я помню последние сообщения в этом чате. Длинные ответы я пришлю Markdown-файлом."
         )
 
     async def ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -94,7 +94,7 @@ class BotApp:
         if not await self.guard(update):
             return
         self.store.reset_chat(update.effective_chat.id)
-        await update.effective_message.reply_text("Начали заново. Контекст очищен, выбранный агент сохранён.")
+        await update.effective_message.reply_text("Начали заново. Контекст и память очищены, выбранный агент сохранён.")
 
     async def show_context(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self.guard(update):
@@ -111,6 +111,18 @@ class BotApp:
             return
         self.store.clear_context(update.effective_chat.id)
         await update.effective_message.reply_text("Контекст очищен.")
+
+    async def show_memory(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self.guard(update):
+            return
+        count = self.store.count_messages(update.effective_chat.id)
+        await update.effective_message.reply_text(f"В памяти этого чата {count} сообщений.")
+
+    async def clear_memory(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self.guard(update):
+            return
+        self.store.clear_messages(update.effective_chat.id)
+        await update.effective_message.reply_text("Память диалога очищена.")
 
     async def agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self.guard(update):
@@ -174,23 +186,31 @@ class BotApp:
         chat_id = update.effective_chat.id
         agent = AGENTS[agent_key]
         saved_context = self.store.get_context(chat_id)
+        history = self.store.get_recent_messages(
+            chat_id=chat_id,
+            limit=self.config.conversation_history_messages,
+            max_chars=self.config.conversation_history_max_chars,
+        )
 
         logger.info(
-            "Running agent=%s chat_id=%s context_items=%s message_chars=%s",
+            "Running agent=%s chat_id=%s context_items=%s history_items=%s message_chars=%s",
             agent_key,
             chat_id,
             len(saved_context),
+            len(history),
             len(user_message),
         )
         await message.reply_text(f"Принял. Агент: {agent.title}. Думаю над задачей.")
         await message.chat.send_action(ChatAction.TYPING)
+        self.store.add_message(chat_id, "user", agent.key, user_message)
         try:
-            answer = await self.runner.run(agent, user_message, saved_context)
+            answer = await self.runner.run(agent, user_message, saved_context, history)
         except Exception as exc:
             logger.exception("Agent run failed")
             await message.reply_text(f"Не получилось получить ответ от модели: {exc}")
             return
 
+        self.store.add_message(chat_id, "assistant", agent.key, answer)
         await self._send_answer(message, agent.key, answer)
 
     def _resolve_agent_for_message(self, chat_id: int, text: str) -> tuple[str, str]:
@@ -240,6 +260,8 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("new", bot.new))
     application.add_handler(CommandHandler("context", bot.show_context))
     application.add_handler(CommandHandler("clear_context", bot.clear_context))
+    application.add_handler(CommandHandler("memory", bot.show_memory))
+    application.add_handler(CommandHandler("clear_memory", bot.clear_memory))
     application.add_handler(CommandHandler(["researcher", "research", "product", "cpo", "editor"], bot.agent_command))
     application.add_handler(MessageHandler(filters.Document.ALL, bot.handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_text))

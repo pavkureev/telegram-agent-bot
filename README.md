@@ -37,6 +37,8 @@ For the always-online server setup at `204.168.193.255`, use [DEPLOY.md](DEPLOY.
 - `/new` - start a fresh thread for the current chat.
 - `/context` - show attached context count.
 - `/clear_context` - remove attached documents and notes.
+- `/memory` - show how many messages are stored for the current chat.
+- `/clear_memory` - clear conversation memory without removing attached documents.
 
 You can also prefix a message with an agent name:
 
@@ -50,6 +52,17 @@ You can also prefix a message with an agent name:
 ## Documents
 
 Send `.txt`, `.md`, `.pdf`, `.docx`, or `.pptx` files to the bot. Extracted text is stored as context for the current Telegram chat until `/clear_context` or `/new`.
+
+## Memory
+
+The bot stores recent conversation messages per Telegram chat, so follow-up questions can refer to previous answers. `/new` clears both documents and memory. `/clear_memory` clears only the dialogue history.
+
+Tune memory with:
+
+```env
+CONVERSATION_HISTORY_MESSAGES=12
+CONVERSATION_HISTORY_MAX_CHARS=24000
+```
 
 ## Output Style
 

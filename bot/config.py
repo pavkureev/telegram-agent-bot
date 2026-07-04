@@ -14,6 +14,8 @@ class Config:
     openai_model: str
     openai_timeout_seconds: float
     openai_max_output_tokens: int | None
+    conversation_history_messages: int
+    conversation_history_max_chars: int
     allowed_user_ids: set[int]
     data_dir: Path
     enable_web_search: bool
@@ -47,6 +49,8 @@ def load_config() -> Config:
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5").strip() or "gpt-5",
         openai_timeout_seconds=float(os.getenv("OPENAI_TIMEOUT_SECONDS", "240")),
         openai_max_output_tokens=int(max_output_raw) if max_output_raw else None,
+        conversation_history_messages=int(os.getenv("CONVERSATION_HISTORY_MESSAGES", "12")),
+        conversation_history_max_chars=int(os.getenv("CONVERSATION_HISTORY_MAX_CHARS", "24000")),
         allowed_user_ids=allowed_user_ids,
         data_dir=data_dir,
         enable_web_search=os.getenv("ENABLE_WEB_SEARCH", "true").strip().lower()
